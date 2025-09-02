@@ -1,0 +1,15 @@
+#!/bin/bash
+
+_voxl_configure_mqtt_client() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    
+    opts="-h --help -s --save-default -c --config -e --edit"
+    
+    COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+    return 0
+}
+
+complete -F _voxl_configure_mqtt_client voxl-configure-mqtt-client

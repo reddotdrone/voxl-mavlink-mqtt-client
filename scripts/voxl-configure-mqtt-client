@@ -1,0 +1,47 @@
+#!/bin/bash
+
+CONFIG_FILE="/etc/modalai/voxl-mqtt-client.conf"
+
+print_usage(){
+    echo ""
+    echo "Configure VOXL MQTT Client"
+    echo ""
+    echo "Usage:"
+    echo ""
+    echo "  voxl-configure-mqtt-client [options]"
+    echo ""
+    echo "Options:"
+    echo "  -h, --help          Show this help message"
+    echo "  -s, --save-default  Save default configuration"
+    echo "  -c, --config        Show current configuration"
+    echo "  -e, --edit          Edit configuration file"
+    echo ""
+}
+
+case "$1" in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    -s|--save-default)
+        voxl-mqtt-client --save-config
+        echo "Default configuration saved to $CONFIG_FILE"
+        ;;
+    -c|--config)
+        voxl-mqtt-client --config
+        ;;
+    -e|--edit)
+        if command -v nano &> /dev/null; then
+            nano $CONFIG_FILE
+        elif command -v vi &> /dev/null; then
+            vi $CONFIG_FILE
+        else
+            echo "No editor found (nano or vi)"
+            exit 1
+        fi
+        ;;
+    *)
+        print_usage
+        exit 1
+        ;;
+esac

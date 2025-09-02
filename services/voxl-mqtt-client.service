@@ -1,0 +1,15 @@
+[Unit]
+Description=VOXL MQTT Client
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/voxl-mqtt-client
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

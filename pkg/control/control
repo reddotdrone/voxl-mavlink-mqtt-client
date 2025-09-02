@@ -1,0 +1,9 @@
+Package: voxl-mqtt-client
+Version: 1.0.0
+Section: base
+Priority: optional
+Architecture: arm64
+Depends: 
+Conflicts: 
+Maintainer: akira@reddotdrone.com
+Description: MQTT client service for VOXL that bridges Modal Pipe system with MQTT brokers
