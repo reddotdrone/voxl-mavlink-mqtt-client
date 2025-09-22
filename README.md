@@ -11,11 +11,24 @@ A MQTT client service for VOXL that enables publishing and subscribing to MQTT t
 - Automatic reconnection handling
 - Systemd service integration
 
+## Install
+
+```bash
+./install_build_deps.sh qrb5165 dev
+```
+
+### Add ARM64 architecture if not already added
+  sudo dpkg --add-architecture arm64
+  sudo apt update
+
+### Install ARM64 mosquitto library
+  sudo apt install libmosquitto-dev:arm64 libmosquitto1:arm64
+
 ## Building
 
 Build for VOXL platform:
 ```bash
-./build.sh qrb5165-2
+./build.sh qrb5165
 ```
 
 Build for native testing:

@@ -44,83 +44,42 @@
 
 // ModalAI includes
 #if defined(__x86_64__)
+// Modal pipe client stubs
 #include "modal_start_stop_stub.h"
 #include "modal_pipe_stub.h"
-#include "modal_journal_stub.h"
-#include "native_stubs.h"  // Additional native build stubs
+#include "modal_pipe_client_stub.h"
 #else
-#include <c_library_v2/common/mavlink.h>  // include before modal_pipe !!
+#include <c_library_v2/common/mavlink.h>
 #include <modal_start_stop.h>
 #include <modal_pipe_client.h>
-#include <modal_journal.h>
 #endif
 
 // MQTT client components
 #include "mqtt_client.h"
 #include "config_file.h"
 #include "mavlink_json.h"
+#include "publish_timer.h"
 
 #define PROCESS_NAME "voxl-mqtt-client"
 
 // Global state variables
+volatile int main_running = 0;                       // Application running flag
 static MQTTClient* g_mqtt_client = nullptr;          // MQTT client instance
 static mqtt_config_t g_config;                       // Configuration loaded from file
 static std::map<std::string, int> g_publish_pipes;   // Map pipe names to channels for publishing
 static std::map<int, std::string> g_channel_to_topic; // Map pipe channel to MQTT topic
-static std::map<std::string, int> g_subscribe_pipes; // Map pipe names to server pipe file descriptors
 static std::mutex g_publish_mutex;                   // Thread safety for publish operations
-static std::mutex g_subscribe_mutex;                 // Thread safety for subscribe operations
+static PublishTimer* g_publish_timer = nullptr;      // Timer-based publishing system
 
 #define PIPE_READ_BUF_SIZE 4096
 #define CLIENT_NAME "voxl-mqtt-client"
 
-// CLIENT_FLAG_EN_SIMPLE_HELPER is already defined in modal_pipe_client.h
-// which gets included through the stub headers
-
-/**
- * Clean up all pipe connections on shutdown
- */
-static void cleanup_pipes() {
-    std::lock(g_publish_mutex, g_subscribe_mutex);
-    std::lock_guard<std::mutex> pub_lock(g_publish_mutex, std::adopt_lock);
-    std::lock_guard<std::mutex> sub_lock(g_subscribe_mutex, std::adopt_lock);
-    
-#if !defined(__x86_64__)
-    pipe_client_close_all();
-#endif
-    g_publish_pipes.clear();
-    g_channel_to_topic.clear();
-    
-#if defined(__x86_64__)
-    // Only cleanup server pipes in native builds (where we have stubs)
-    for (auto& pair : g_subscribe_pipes) {
-        pipe_server_close(pair.second);
-    }
-#endif
-    g_subscribe_pipes.clear();
-}
-
-/**
- * Signal handler for graceful shutdown
- * Handles SIGINT (Ctrl+C) and SIGTERM signals
- */
-static void signal_handler(int sig) {
-    std::cout << "\nReceived signal " << sig << ", shutting down..." << std::endl;
-    main_running = 0;  // Set flag to stop main loop
-}
-
 /**
  * MQTT connection callback - called when connection status changes
- * Auto-subscribes to configured MQTT topics on successful connection
  */
 static void on_mqtt_connect(int result) {
     if (result == 0) {
         std::cout << "Connected to MQTT broker" << std::endl;
-        
-        // Subscribe to all configured MQTT topics
-        for (const auto& topic : g_config.subscribe_topics) {
-            g_mqtt_client->subscribe(topic.topic, topic.qos);
-        }
     } else {
         std::cerr << "Failed to connect to MQTT broker: " << result << std::endl;
     }
@@ -134,58 +93,37 @@ static void on_mqtt_disconnect(int result) {
 }
 
 /**
- * MQTT message callback - called when subscribed message arrives
- * Forwards MQTT messages to corresponding VOXL pipes
- */
-static void on_mqtt_message(const std::string& topic, const std::string& payload) {
-    std::cout << "Received message on topic: " << topic << " with payload: " << payload << std::endl;
-    
-    std::lock_guard<std::mutex> lock(g_subscribe_mutex);
-    
-    // Find the pipe that corresponds to this MQTT topic
-    for (const auto& sub_topic : g_config.subscribe_topics) {
-        if (sub_topic.topic == topic) {
-            auto pipe_it = g_subscribe_pipes.find(sub_topic.pipe_name);
-            if (pipe_it != g_subscribe_pipes.end()) {
-#if defined(__x86_64__)
-                // Write MQTT payload to VOXL pipe (stub implementation for native builds)
-                pipe_server_write(pipe_it->second, (char*)payload.c_str(), payload.length());
-#else
-                // TODO: Implement proper pipe server write for cross-compilation
-                std::cout << "Would write " << payload.length() << " bytes to pipe: " 
-                          << sub_topic.pipe_name << std::endl;
-#endif
-            }
-            break;
-        }
-    }
-}
-
-
-/**
  * Pipe client callback - called when data arrives from a VOXL pipe
- * Publishes the data to the corresponding MQTT topic
+ * Buffers the data for timer-based publishing at 1Hz
  */
 static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unused)) void* context) {
-    std::lock_guard<std::mutex> lock(g_publish_mutex);
-    
     // Find the MQTT topic for this channel
     auto topic_it = g_channel_to_topic.find(ch);
     if (topic_it != g_channel_to_topic.end()) {
         std::string payload;
-        
+
 #if defined(__x86_64__)
         // For native builds, just use raw data
         payload = std::string(data, bytes);
 #else
-        // For VOXL builds, parse MAVLink messages
-        if (!parse_mavlink_to_json(data, bytes, payload)) {
-            // If MAVLink parsing fails, fall back to raw data
+        // For VOXL builds, auto-detect and parse data (MAVLink, VIO, etc.)
+        std::string pipe_name;
+        // Find the pipe name for this channel
+        for (const auto& pub_topic : g_config.publish_topics) {
+            if (g_publish_pipes.find(pub_topic.pipe_name) != g_publish_pipes.end() &&
+                g_publish_pipes[pub_topic.pipe_name] == ch) {
+                pipe_name = pub_topic.pipe_name;
+                break;
+            }
+        }
+
+        if (!parse_pipe_data_to_json(pipe_name, data, bytes, payload)) {
+            // If all parsing fails, fall back to raw data
             payload = std::string(data, bytes);
-            std::cout << "MAVLink parsing failed, using raw data" << std::endl;
+            std::cout << "Data parsing failed for pipe '" << pipe_name << "', using raw data" << std::endl;
         }
 #endif
-        
+
         // Find QoS level for this topic
         int qos = 0;
         for (const auto& pub_topic : g_config.publish_topics) {
@@ -194,11 +132,14 @@ static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unu
                 break;
             }
         }
-        
-        g_mqtt_client->publish(topic_it->second, payload, qos);
-        std::cout << "Published " << bytes << " bytes from pipe channel " << ch 
-                  << " to topic: " << topic_it->second << std::endl;
-        std::cout << "Data: " << payload << std::endl;
+
+        // Buffer the data for timer-based publishing
+        if (g_publish_timer) {
+            g_publish_timer->buffer_data(ch, topic_it->second, payload, qos);
+        }
+
+        std::cout << "Buffered " << bytes << " bytes from pipe channel " << ch
+                  << " for topic: " << topic_it->second << std::endl;
     }
 }
 
@@ -217,42 +158,14 @@ static void pipe_disconnect_callback(int ch, __attribute__((unused)) void* conte
 }
 
 /**
- * Publisher thread for native builds only - sends test data when pipes aren't available
- */
-#if defined(__x86_64__)
-static void pipe_publisher_thread() {
-    while (main_running) {
-        {
-            std::lock_guard<std::mutex> lock(g_publish_mutex);
-            for (const auto& pub_topic : g_config.publish_topics) {
-                std::string test_payload = "TEST_MESSAGE_FROM_VOXL_" + std::to_string(std::time(nullptr));
-                g_mqtt_client->publish(pub_topic.topic, test_payload, pub_topic.qos);
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
-}
-#endif
-
-/**
  * Initialize all Modal Pipe connections
- * Sets up client pipes for publishing and server pipes for subscribing
+ * Sets up client pipes for publishing to MQTT
  * @return 0 on success, -1 on failure
  */
 static int setup_pipes() {
-    std::lock(g_publish_mutex, g_subscribe_mutex);
-    std::lock_guard<std::mutex> pub_lock(g_publish_mutex, std::adopt_lock);
-    std::lock_guard<std::mutex> sub_lock(g_subscribe_mutex, std::adopt_lock);
+    std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
     
-#if defined(__x86_64__)
-    // For native builds, just log that we're using test mode
-    for (const auto& pub_topic : g_config.publish_topics) {
-        std::cout << "Test mode - would connect to pipe: " << pub_topic.pipe_name << std::endl;
-    }
-    for (const auto& sub_topic : g_config.subscribe_topics) {
-        std::cout << "Test mode - would create subscribe pipe: " << sub_topic.pipe_name << std::endl;
-    }
-#else
+#if !defined(__x86_64__)
     // Set up client pipes for reading VOXL data and publishing to MQTT
     int ch = 0;
     for (const auto& pub_topic : g_config.publish_topics) {
@@ -276,16 +189,41 @@ static int setup_pipes() {
         std::cout << "Opened publish pipe: " << pub_topic.pipe_name << " on channel " << ch << std::endl;
         ch++;
     }
-    
-    // Set up server pipes for receiving MQTT data and forwarding to VOXL
-    // Note: This would require pipe server functionality which is more complex
-    // For now, we'll focus on the client side (VOXL->MQTT publishing)
-    for (const auto& sub_topic : g_config.subscribe_topics) {
-        std::cout << "Subscribe pipe setup not implemented yet: " << sub_topic.pipe_name << std::endl;
-    }
 #endif
     
     return 0;
+}
+
+/**
+ * Clean up all pipe connections on shutdown
+ */
+static void cleanup_pipes() {
+    // Stop the timer first
+    if (g_publish_timer) {
+        g_publish_timer->stop();
+    }
+
+    std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
+
+#if !defined(__x86_64__)
+    pipe_client_close_all();
+#endif
+    g_publish_pipes.clear();
+    g_channel_to_topic.clear();
+
+    // Clear buffered data
+    if (g_publish_timer) {
+        g_publish_timer->clear_buffered_data();
+    }
+}
+
+/**
+ * Signal handler for graceful shutdown
+ * Handles SIGINT (Ctrl+C) and SIGTERM signals
+ */
+static void signal_handler(int sig) {
+    std::cout << "\nReceived signal " << sig << ", shutting down..." << std::endl;
+    main_running = 0;  // Set flag to stop main loop
 }
 
 /**
@@ -368,11 +306,13 @@ int main(int argc, char* argv[]) {
         delete g_mqtt_client;
         return -1;
     }
+
+    // Initialize publish timer
+    g_publish_timer = new PublishTimer(g_mqtt_client);
     
     // Register MQTT event callbacks
     g_mqtt_client->set_on_connect_callback(on_mqtt_connect);
     g_mqtt_client->set_on_disconnect_callback(on_mqtt_disconnect);
-    g_mqtt_client->set_on_message_callback(on_mqtt_message);
     
     // Initialize Modal Pipe connections
     if (setup_pipes() != 0) {
@@ -391,12 +331,11 @@ int main(int argc, char* argv[]) {
     
     // Start MQTT client background thread
     g_mqtt_client->run();
-    
-#if defined(__x86_64__)
-    // Start test publisher thread for native builds
-    std::thread publisher_thread(pipe_publisher_thread);
-#endif
-    
+
+    // Start 1Hz timer for publishing buffered data
+    g_publish_timer->start();
+
+
     main_running = 1;
     std::cout << "VOXL MQTT Client started" << std::endl;
     
@@ -418,14 +357,11 @@ int main(int argc, char* argv[]) {
     // Stop MQTT client background thread
     g_mqtt_client->stop();
     
-#if defined(__x86_64__)
-    // Wait for publisher thread to finish (only exists in test mode)
-    publisher_thread.join();
-#endif
     
     // Clean up all pipe connections
     cleanup_pipes();
     delete g_mqtt_client;
+    delete g_publish_timer;
     
     // Remove PID file
     remove_pid_file(PROCESS_NAME);

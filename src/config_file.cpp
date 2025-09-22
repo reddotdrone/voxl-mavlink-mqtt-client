@@ -55,7 +55,6 @@ static void set_default_config(mqtt_config_t* config) {
     config->reconnect_delay = 5;
     
     config->publish_topics.clear();
-    config->subscribe_topics.clear();
     
     mqtt_topic_config_t pub_topic;
     // pub_topic.topic = "voxl/imu";
@@ -64,20 +63,22 @@ static void set_default_config(mqtt_config_t* config) {
     // config->publish_topics.push_back(pub_topic);
     
     // pub_topic.topic = "voxl/qvio";
-    // pub_topic.pipe_name = "qvio";
+    // pub_topic.pipe_name = "vvhub_aligned_vio";
     // pub_topic.qos = 0;
     // config->publish_topics.push_back(pub_topic);
+
+    // #define MODAL_PIPE_DEFAULT_BASE_DIR "/run/mpa/"
+
+    pub_topic.topic = "voxl/battery";
+    pub_topic.pipe_name = "/run/mpa/mavlink_sys_status/";
+    pub_topic.qos = 0;
+    config->publish_topics.push_back(pub_topic);
 
     pub_topic.topic = "voxl/heartbeat";
     pub_topic.pipe_name = "mavlink_ap_heartbeat";
     pub_topic.qos = 0;
     config->publish_topics.push_back(pub_topic);
 
-    mqtt_topic_config_t sub_topic;
-    sub_topic.topic = "voxl/commands";
-    sub_topic.pipe_name = "commands";
-    sub_topic.qos = 0;
-    config->subscribe_topics.push_back(sub_topic);
 }
 
 static std::string trim(const std::string& str) {
@@ -105,7 +106,6 @@ int load_config(mqtt_config_t* config) {
     std::string line;
     mqtt_topic_config_t current_topic;
     bool in_publish_section = false;
-    bool in_subscribe_section = false;
     
     while (std::getline(file, line)) {
         line = trim(line);
@@ -113,21 +113,12 @@ int load_config(mqtt_config_t* config) {
         
         if (line == "[publish_topics]") {
             in_publish_section = true;
-            in_subscribe_section = false;
             config->publish_topics.clear();
             continue;
         }
-        
-        if (line == "[subscribe_topics]") {
-            in_publish_section = false;
-            in_subscribe_section = true;
-            config->subscribe_topics.clear();
-            continue;
-        }
-        
+
         if (line[0] == '[' && line.back() == ']') {
             in_publish_section = false;
-            in_subscribe_section = false;
             continue;
         }
         
@@ -141,18 +132,14 @@ int load_config(mqtt_config_t* config) {
             value = value.substr(1, value.length() - 2);
         }
         
-        if (in_publish_section || in_subscribe_section) {
+        if (in_publish_section) {
             if (key == "topic") {
                 current_topic.topic = value;
             } else if (key == "pipe_name") {
                 current_topic.pipe_name = value;
             } else if (key == "qos") {
                 current_topic.qos = std::stoi(value);
-                if (in_publish_section) {
-                    config->publish_topics.push_back(current_topic);
-                } else {
-                    config->subscribe_topics.push_back(current_topic);
-                }
+                config->publish_topics.push_back(current_topic);
             }
         } else {
             if (key == "broker_host") {
@@ -196,7 +183,7 @@ int save_default_config(void) {
     }
     
     file << "# VOXL MQTT Client Configuration\n";
-    file << "# This file configures the MQTT client for publishing and subscribing to topics\n\n";
+    file << "# This file configures the MQTT client for publishing to topics\n\n";
     
     file << "[broker]\n";
     file << "broker_host = \"localhost\"\n";
@@ -221,10 +208,6 @@ int save_default_config(void) {
     file << "pipe_name = \"qvio\"\n";
     file << "qos = 0\n\n";
     
-    file << "[subscribe_topics]\n";
-    file << "topic = \"voxl/commands\"\n";
-    file << "pipe_name = \"commands\"\n";
-    file << "qos = 0\n\n";
     
     file.close();
     return 0;
@@ -244,9 +227,5 @@ void print_config(const mqtt_config_t* config) {
         std::cout << "  " << topic.topic << " <- " << topic.pipe_name << " (QoS " << topic.qos << ")\n";
     }
     
-    std::cout << "\nSubscribe Topics:\n";
-    for (const auto& topic : config->subscribe_topics) {
-        std::cout << "  " << topic.topic << " -> " << topic.pipe_name << " (QoS " << topic.qos << ")\n";
-    }
     std::cout << std::endl;
 }

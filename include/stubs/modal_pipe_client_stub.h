@@ -8,41 +8,17 @@
  * when building natively for development/testing
  ******************************************************************************/
 
-#pragma once
+#ifndef MODAL_PIPE_CLIENT_STUB_H
+#define MODAL_PIPE_CLIENT_STUB_H
 
 #if defined(__x86_64__)
 
 #include <cstddef>
 
-// Global variable definition for native builds
+// Global variable declaration for native builds
 extern volatile int main_running;
 
 extern "C" {
-    // Process management stubs
-    inline int kill_existing_process(const char* name, float timeout_s) { 
-        (void)name; (void)timeout_s; return 0; 
-    }
-    
-    inline int make_pid_file(const char* name) { 
-        (void)name; return 0; 
-    }
-    
-    inline int remove_pid_file(const char* name) { 
-        (void)name; return 0; 
-    }
-    
-    // Pipe function stubs
-    inline void pipe_client_close(int fd) { 
-        (void)fd; 
-    }
-    
-    inline void pipe_server_close(int fd) { 
-        (void)fd; 
-    }
-    
-    inline int pipe_server_write(int ch, const void* data, int bytes) { 
-        (void)ch; (void)data; (void)bytes; return 0; 
-    }
     
     // Pipe client functionality stubs
     inline int pipe_client_open(int ch, const char* name, const char* client_name, int flags, int buf_size) {
@@ -74,3 +50,5 @@ extern "C" {
 }
 
 #endif // defined(__x86_64__)
+
+#endif // MODAL_PIPE_CLIENT_STUB_H
