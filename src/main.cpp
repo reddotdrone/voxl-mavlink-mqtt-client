@@ -64,6 +64,7 @@ static std::map<int, std::string> g_channel_to_topic; // Map pipe channel to MQT
 static std::mutex g_publish_mutex;                   // Thread safety for publish operations
 static PublishTimer* g_publish_timer = nullptr;      // Timer-based publishing system
 bool g_debug_mode = false;                           // Debug logging flag
+static int g_interval = 1;                           // Publish interval in seconds
 
 #define PIPE_READ_BUF_SIZE 4096
 #define CLIENT_NAME "voxl-mavlink-mqtt-client"
@@ -88,7 +89,7 @@ static void on_mqtt_disconnect(int result) {
 
 /**
  * Pipe client callback - called when data arrives from a VOXL pipe
- * Buffers the data for timer-based publishing at 1Hz
+ * Buffers the data for timer-based publishing at configurable publish interval
  */
 static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unused)) void* context) {
     // Find the MQTT topic for this channel
@@ -232,6 +233,7 @@ static void print_usage() {
     std::cout << "  -s, --save-config  Save default configuration file\n";
     std::cout << "  -v, --verbose      Enable verbose logging\n";
     std::cout << "  -d, --debug        Enable debug logging for pipe data\n";
+    std::cout << "  --interval N       Set publish interval in seconds (default: 1)\n";
     std::cout << std::endl;
 }
 
@@ -267,6 +269,23 @@ int main(int argc, char* argv[]) {
             verbose = true;
         } else if (arg == "-d" || arg == "--debug") {
             g_debug_mode = true;
+        } else if (arg == "--interval") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --interval requires a value" << std::endl;
+                print_usage();
+                return -1;
+            }
+            try {
+                g_interval = std::stoi(argv[i + 1]);
+                if (g_interval <= 0) {
+                    std::cerr << "Error: interval must be a positive integer" << std::endl;
+                    return -1;
+                }
+                i++; // Skip the next argument since we consumed it
+            } catch (const std::exception& e) {
+                std::cerr << "Error: Invalid value for --interval: " << argv[i + 1] << std::endl;
+                return -1;
+            }
         } else {
             std::cerr << "Unknown option: " << arg << std::endl;
             print_usage();
@@ -305,8 +324,8 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Initialize publish timer
-    g_publish_timer = new PublishTimer(g_mqtt_client);
+    // Initialize publish timer with configurable interval
+    g_publish_timer = new PublishTimer(g_mqtt_client, g_interval, g_debug_mode);
     
     // Register MQTT event callbacks
     g_mqtt_client->set_on_connect_callback(on_mqtt_connect);
@@ -330,7 +349,7 @@ int main(int argc, char* argv[]) {
     // Start MQTT client background thread
     g_mqtt_client->run();
 
-    // Start 1Hz timer for publishing buffered data
+    // Start timer for publishing buffered data at configured publish interval
     g_publish_timer->start();
 
     main_running = 1;
