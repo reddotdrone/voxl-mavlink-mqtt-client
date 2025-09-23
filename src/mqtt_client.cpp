@@ -38,6 +38,9 @@
 #include <cstring>
 #include <unistd.h>
 
+// External debug flag
+extern bool g_debug_mode;
+
 MQTTClient::MQTTClient() : m_mosq(nullptr), m_connected(false), m_running(false) {
     mosquitto_lib_init();
 }
@@ -104,8 +107,17 @@ bool MQTTClient::publish(const std::string& topic, const std::string& payload, i
     if (!m_mosq || !m_connected) {
         return false;
     }
-    
+
     int rc = mosquitto_publish(m_mosq, nullptr, topic.c_str(), payload.length(), payload.c_str(), qos, false);
+
+    if (rc == MOSQ_ERR_SUCCESS) {
+        if (g_debug_mode) {
+            std::cout << "Published to topic '" << topic << "': " << payload.length() << " bytes" << std::endl;
+        }
+    } else {
+        std::cerr << "Failed to publish to topic '" << topic << "': " << mosquitto_strerror(rc) << std::endl;
+    }
+
     return rc == MOSQ_ERR_SUCCESS;
 }
 
@@ -113,8 +125,17 @@ bool MQTTClient::subscribe(const std::string& topic, int qos) {
     if (!m_mosq || !m_connected) {
         return false;
     }
-    
+
     int rc = mosquitto_subscribe(m_mosq, nullptr, topic.c_str(), qos);
+
+    if (rc == MOSQ_ERR_SUCCESS) {
+        if (g_debug_mode) {
+            std::cout << "Subscribed to topic '" << topic << "' with QoS " << qos << std::endl;
+        }
+    } else {
+        std::cerr << "Failed to subscribe to topic '" << topic << "': " << mosquitto_strerror(rc) << std::endl;
+    }
+
     return rc == MOSQ_ERR_SUCCESS;
 }
 
@@ -178,7 +199,12 @@ void MQTTClient::on_disconnect_wrapper(struct mosquitto* mosq, void* obj, int re
 void MQTTClient::on_message_wrapper(struct mosquitto* mosq, void* obj, const struct mosquitto_message* message) {
     (void)mosq;
     MQTTClient* client = static_cast<MQTTClient*>(obj);
-    
+
+    if (g_debug_mode) {
+        std::string topic(message->topic);
+        std::cout << "Received message on topic '" << topic << "': " << message->payloadlen << " bytes" << std::endl;
+    }
+
     if (client->m_on_message && message->payload) {
         std::string topic(message->topic);
         std::string payload(static_cast<char*>(message->payload), message->payloadlen);
@@ -189,7 +215,9 @@ void MQTTClient::on_message_wrapper(struct mosquitto* mosq, void* obj, const str
 void MQTTClient::on_log_wrapper(struct mosquitto* mosq, void* obj, int level, const char* str) {
     (void)mosq;
     (void)obj;
-    std::cout << "MQTT Log [" << level << "]: " << str << std::endl;
+    if (g_debug_mode) {
+        std::cout << "MQTT Log [" << level << "]: " << str << std::endl;
+    }
 }
 
 void MQTTClient::setup_tls() {

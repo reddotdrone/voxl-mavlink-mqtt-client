@@ -14,6 +14,9 @@
 #include <c_library_v2/common/mavlink.h>
 #include <mavlink_to_json.h>
 
+// External debug flag
+extern bool g_debug_mode;
+
 /**
  * Parse raw pipe data into MAVLink messages and convert to JSON
  * @param data Raw data buffer from pipe

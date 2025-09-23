@@ -63,6 +63,7 @@ static std::map<std::string, int> g_publish_pipes;   // Map pipe names to channe
 static std::map<int, std::string> g_channel_to_topic; // Map pipe channel to MQTT topic
 static std::mutex g_publish_mutex;                   // Thread safety for publish operations
 static PublishTimer* g_publish_timer = nullptr;      // Timer-based publishing system
+bool g_debug_mode = false;                           // Debug logging flag
 
 #define PIPE_READ_BUF_SIZE 4096
 #define CLIENT_NAME "voxl-mavlink-mqtt-client"
@@ -109,7 +110,9 @@ static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unu
         if (!parse_pipe_data_to_json(pipe_name, data, bytes, payload)) {
             // If all parsing fails, fall back to raw data
             payload = std::string(data, bytes);
-            std::cout << "Data parsing failed for pipe '" << pipe_name << "', using raw data" << std::endl;
+            if (g_debug_mode) {
+                std::cout << "Data parsing failed for pipe '" << pipe_name << "', using raw data" << std::endl;
+            }
         }
 
         // Find QoS level for this topic
@@ -126,8 +129,10 @@ static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unu
             g_publish_timer->buffer_data(ch, topic_it->second, payload, qos);
         }
 
-        std::cout << "Buffered " << bytes << " bytes from pipe channel " << ch
-                  << " for topic: " << topic_it->second << std::endl;
+        if (g_debug_mode) {
+            std::cout << "Buffered " << bytes << " bytes from pipe channel " << ch
+                      << " for topic: " << topic_it->second << std::endl;
+        }
     }
 }
 
@@ -135,14 +140,18 @@ static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unu
  * Pipe client connect callback - called when pipe client connects
  */
 static void pipe_connect_callback(int ch, __attribute__((unused)) void* context) {
-    std::cout << "Pipe client channel " << ch << " connected" << std::endl;
+    if (g_debug_mode) {
+        std::cout << "Pipe client channel " << ch << " connected" << std::endl;
+    }
 }
 
 /**
  * Pipe client disconnect callback - called when pipe client disconnects  
  */
 static void pipe_disconnect_callback(int ch, __attribute__((unused)) void* context) {
-    std::cout << "Pipe client channel " << ch << " disconnected" << std::endl;
+    if (g_debug_mode) {
+        std::cout << "Pipe client channel " << ch << " disconnected" << std::endl;
+    }
 }
 
 /**
@@ -173,7 +182,9 @@ static int setup_pipes() {
 
         g_publish_pipes[pub_topic.pipe_name] = ch;
         g_channel_to_topic[ch] = pub_topic.topic;
-        std::cout << "Opened publish pipe: " << pub_topic.pipe_name << " on channel " << ch << std::endl;
+        if (g_debug_mode) {
+            std::cout << "Opened publish pipe: " << pub_topic.pipe_name << " on channel " << ch << std::endl;
+        }
         ch++;
     }
 
@@ -220,6 +231,7 @@ static void print_usage() {
     std::cout << "  -c, --config       Print current configuration\n";
     std::cout << "  -s, --save-config  Save default configuration file\n";
     std::cout << "  -v, --verbose      Enable verbose logging\n";
+    std::cout << "  -d, --debug        Enable debug logging for pipe data\n";
     std::cout << std::endl;
 }
 
@@ -253,6 +265,8 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
+        } else if (arg == "-d" || arg == "--debug") {
+            g_debug_mode = true;
         } else {
             std::cerr << "Unknown option: " << arg << std::endl;
             print_usage();

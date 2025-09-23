@@ -25,7 +25,7 @@ bool parse_mavlink_to_json(char* data, int bytes, std::string& json_output) {
     if (msg_array != NULL && n_packets > 0) {
         // Convert first MAVLink message to JSON
         json_output = mavlink_to_json_string(&msg_array[0]);    
-        if (n_packets > 1) {
+        if (n_packets > 1 && g_debug_mode) {
             std::cout << "Received " << n_packets << " MAVLink messages, converting first one" << std::endl;
         }
         return true;
@@ -120,7 +120,7 @@ bool parse_vio_to_json(char* data, int bytes, std::string& json_output) {
         // Convert first VIO data to JSON
         json_output = vio_to_json(&vio_array[0]);
         
-        if (n_packets > 1) {
+        if (n_packets > 1 && g_debug_mode) {
             std::cout << "Received " << n_packets << " VIO data packets, converting first one" << std::endl;
         }
         return true;
@@ -173,7 +173,7 @@ bool parse_imu_to_json(char* data, int bytes, std::string& json_output) {
         // Convert latest IMU data to JSON
         json_output = imu_to_json(&data_array[n_packets-1]);
 
-        if (n_packets > 1) {
+        if (n_packets > 1 && g_debug_mode) {
             std::cout << "Received " << n_packets << " IMU data packets, converting latest one" << std::endl;
         }
         return true;
