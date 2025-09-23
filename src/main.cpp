@@ -60,7 +60,7 @@
 #include "mavlink_json.h"
 #include "publish_timer.h"
 
-#define PROCESS_NAME "voxl-mqtt-client"
+#define PROCESS_NAME "voxl-mavlink-mqtt-client"
 
 // Global state variables
 volatile int main_running = 0;                       // Application running flag
@@ -72,7 +72,7 @@ static std::mutex g_publish_mutex;                   // Thread safety for publis
 static PublishTimer* g_publish_timer = nullptr;      // Timer-based publishing system
 
 #define PIPE_READ_BUF_SIZE 4096
-#define CLIENT_NAME "voxl-mqtt-client"
+#define CLIENT_NAME "voxl-mavlink-mqtt-client"
 
 /**
  * MQTT connection callback - called when connection status changes
@@ -335,9 +335,8 @@ int main(int argc, char* argv[]) {
     // Start 1Hz timer for publishing buffered data
     g_publish_timer->start();
 
-
     main_running = 1;
-    std::cout << "VOXL MQTT Client started" << std::endl;
+    std::cout << "VOXL MAVLink MQTT Client started" << std::endl;
     
     // Main loop - monitor connection and handle reconnection
     while (main_running) {
@@ -356,7 +355,6 @@ int main(int argc, char* argv[]) {
     
     // Stop MQTT client background thread
     g_mqtt_client->stop();
-    
     
     // Clean up all pipe connections
     cleanup_pipes();

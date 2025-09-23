@@ -38,7 +38,7 @@
 
 #include "mqtt_client.h"
 
-#define CONFIG_FILE_PATH "/etc/modalai/voxl-mqtt-client.conf"
+#define CONFIG_FILE_PATH "/etc/modalai/voxl-mavlink-mqtt-client.conf"
 
 int load_config(mqtt_config_t* config);
 int save_default_config(void);

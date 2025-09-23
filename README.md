@@ -1,6 +1,6 @@
-# VOXL MQTT Client
+# VOXL MAVLink MQTT Client
 
-A MQTT client service for VOXL that enables publishing and subscribing to MQTT topics through the Modal Pipe system.
+A MAVLink MQTT client service for VOXL that enables publishing MAVLink messages to MQTT topics through the Modal Pipe system.
 
 ## Features
 
@@ -40,7 +40,7 @@ Build for native testing:
 
 Generate default configuration:
 ```bash
-voxl-mqtt-client --save-config
+voxl-mavlink-mqtt-client --save-config
 ```
 
 Edit configuration:
@@ -50,12 +50,12 @@ voxl-configure-mqtt-client --edit
 
 View current configuration:
 ```bash
-voxl-mqtt-client --config
+voxl-mavlink-mqtt-client --config
 ```
 
 ## Configuration File
 
-The configuration file is located at `/etc/modalai/voxl-mqtt-client.conf` and supports:
+The configuration file is located at `/etc/modalai/voxl-mavlink-mqtt-client.conf` and supports:
 
 - Broker connection settings (host, port, credentials)
 - TLS/SSL configuration
@@ -67,17 +67,17 @@ The configuration file is located at `/etc/modalai/voxl-mqtt-client.conf` and su
 
 Start the service:
 ```bash
-systemctl start voxl-mqtt-client
+systemctl start voxl-mavlink-mqtt-client
 ```
 
 Enable automatic startup:
 ```bash
-systemctl enable voxl-mqtt-client
+systemctl enable voxl-mavlink-mqtt-client
 ```
 
 Run in foreground with verbose output:
 ```bash
-voxl-mqtt-client --verbose
+voxl-mavlink-mqtt-client --verbose
 ```
 
 ## Dependencies
@@ -85,6 +85,43 @@ voxl-mqtt-client --verbose
 - libmosquitto (MQTT client library)
 - modal_pipe (VOXL pipe system)
 - voxl_cutils (VOXL utilities)
+
+## Remove
+⏺ To remove the old binary on VOXL, you'll need to:
+
+1. Check if it's running as a service:
+```bash
+systemctl stop voxl-mavlink-mqtt-client
+systemctl disable voxl-mavlink-mqtt-client
+```
+
+2. Remove the binary:
+```bash
+rm /usr/bin/voxl-mavlink-mqtt-client
+```
+
+3. Remove service files:
+```bash
+rm /etc/systemd/system/voxl-mavlink-mqtt-client.service
+systemctl daemon-reload
+```
+
+4. Remove configuration files (if any):
+```bash
+rm -rf /etc/modalai/voxl-mavlink-mqtt-client*
+```
+
+5. Remove package if installed via deb:
+```bash
+dpkg -r voxl-mavlink-mqtt-client
+```
+
+You can check what's currently installed with:
+```bash
+which voxl-mavlink-mqtt-client
+systemctl status voxl-mavlink-mqtt-client
+dpkg -l | grep mavlink-mqtt-client
+```
 
 ## License
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONFIG_FILE="/etc/modalai/voxl-mqtt-client.conf"
+CONFIG_FILE="/etc/modalai/voxl-mavlink-mqtt-client.conf"
 
 print_usage(){
     echo ""
@@ -24,11 +24,11 @@ case "$1" in
         exit 0
         ;;
     -s|--save-default)
-        voxl-mqtt-client --save-config
+        voxl-mavlink-mqtt-client --save-config
         echo "Default configuration saved to $CONFIG_FILE"
         ;;
     -c|--config)
-        voxl-mqtt-client --config
+        voxl-mavlink-mqtt-client --config
         ;;
     -e|--edit)
         if command -v nano &> /dev/null; then

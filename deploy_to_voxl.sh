@@ -114,7 +114,7 @@ if [ "$DEPLOY_MODE" == "ssh" ]; then
 
 	if sshpass -p oelinux123 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$SEND_IP "$DPKG_CHECK_STRING" 2>/dev/null | grep -q 0 ; then
 		echo "dpkg detected";
-		FILE=$(ls -1q voxl-mqtt-client*.deb)
+		FILE=$(ls -1q voxl-mavlink-mqtt-client*.deb)
 		sshpass -p oelinux123 scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $FILE root@$SEND_IP:/data/$FILE &>/dev/null
 		sshpass -p oelinux123 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$SEND_IP "dpkg -i --force-downgrade --force-depends /data/$FILE" 2>/dev/null
 

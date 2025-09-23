@@ -11,6 +11,7 @@
 #include <iostream>
 #include <cmath>
 #include <cstring>
+#include <cJSON.h>
 
 #if !defined(__x86_64__)
 #include <modal_pipe_interfaces.h>
@@ -55,57 +56,61 @@ static void rotation_to_tait_bryan(float R[3][3], float* roll, float* pitch, flo
 }
 
 std::string vio_to_json(const void* vio_data_ptr) {
-    // Cast to vio_data_t (assuming this is the structure type from modal_pipe_interfaces.h)
     const vio_data_t* vio = static_cast<const vio_data_t*>(vio_data_ptr);
-    
-    std::string json = "{";
-    json += "\"data_type\":\"vio\",";
-    json += "\"timestamp_ns\":" + std::to_string(vio->timestamp_ns) + ",";
-    json += "\"timestamp\":" + std::to_string(std::time(nullptr)) + ",";
-    
+
+    cJSON* root = cJSON_CreateObject();
+    if (!root) return "{}";
+
+    cJSON_AddNumberToObject(root, "timestamp_ns", vio->timestamp_ns);
+
     // Position (T_imu_wrt_vio)
-    json += "\"position\":{";
-    json += "\"x\":" + std::to_string(vio->T_imu_wrt_vio[0]) + ",";
-    json += "\"y\":" + std::to_string(vio->T_imu_wrt_vio[1]) + ",";
-    json += "\"z\":" + std::to_string(vio->T_imu_wrt_vio[2]);
-    json += "},";
-    
+    cJSON* position = cJSON_CreateObject();
+    cJSON_AddNumberToObject(position, "x", vio->T_imu_wrt_vio[0]);
+    cJSON_AddNumberToObject(position, "y", vio->T_imu_wrt_vio[1]);
+    cJSON_AddNumberToObject(position, "z", vio->T_imu_wrt_vio[2]);
+    cJSON_AddItemToObject(root, "position", position);
+
     // Rotation (convert rotation matrix to Euler angles)
     float R_tmp[3][3];
     memcpy(R_tmp, vio->R_imu_to_vio, sizeof(R_tmp));
     float roll, pitch, yaw;
     rotation_to_tait_bryan(R_tmp, &roll, &pitch, &yaw);
-    
-    json += "\"rotation\":{";
-    json += "\"roll\":" + std::to_string((double)roll * RAD_TO_DEG) + ",";
-    json += "\"pitch\":" + std::to_string((double)pitch * RAD_TO_DEG) + ",";
-    json += "\"yaw\":" + std::to_string((double)yaw * RAD_TO_DEG);
-    json += "},";
-    
+
+    cJSON* rotation = cJSON_CreateObject();
+    cJSON_AddNumberToObject(rotation, "roll", (double)roll * RAD_TO_DEG);
+    cJSON_AddNumberToObject(rotation, "pitch", (double)pitch * RAD_TO_DEG);
+    cJSON_AddNumberToObject(rotation, "yaw", (double)yaw * RAD_TO_DEG);
+    cJSON_AddItemToObject(root, "rotation", rotation);
+
     // Velocity
-    json += "\"velocity\":{";
-    json += "\"x\":" + std::to_string(vio->vel_imu_wrt_vio[0]) + ",";
-    json += "\"y\":" + std::to_string(vio->vel_imu_wrt_vio[1]) + ",";
-    json += "\"z\":" + std::to_string(vio->vel_imu_wrt_vio[2]);
-    json += "},";
-    
+    cJSON* velocity = cJSON_CreateObject();
+    cJSON_AddNumberToObject(velocity, "x", vio->vel_imu_wrt_vio[0]);
+    cJSON_AddNumberToObject(velocity, "y", vio->vel_imu_wrt_vio[1]);
+    cJSON_AddNumberToObject(velocity, "z", vio->vel_imu_wrt_vio[2]);
+    cJSON_AddItemToObject(root, "velocity", velocity);
+
     // Angular velocity
-    json += "\"angular_velocity\":{";
-    json += "\"x\":" + std::to_string((double)vio->imu_angular_vel[0] * RAD_TO_DEG) + ",";
-    json += "\"y\":" + std::to_string((double)vio->imu_angular_vel[1] * RAD_TO_DEG) + ",";
-    json += "\"z\":" + std::to_string((double)vio->imu_angular_vel[2] * RAD_TO_DEG);
-    json += "},";
-    
+    cJSON* angular_velocity = cJSON_CreateObject();
+    cJSON_AddNumberToObject(angular_velocity, "x", (double)vio->imu_angular_vel[0] * RAD_TO_DEG);
+    cJSON_AddNumberToObject(angular_velocity, "y", (double)vio->imu_angular_vel[1] * RAD_TO_DEG);
+    cJSON_AddNumberToObject(angular_velocity, "z", (double)vio->imu_angular_vel[2] * RAD_TO_DEG);
+    cJSON_AddItemToObject(root, "angular_velocity", angular_velocity);
+
     // Quality and features
-    json += "\"quality\":" + std::to_string(vio->quality) + ",";
-    json += "\"n_feature_points\":" + std::to_string(vio->n_feature_points) + ",";
-    
+    cJSON_AddNumberToObject(root, "quality", vio->quality);
+    cJSON_AddNumberToObject(root, "n_feature_points", vio->n_feature_points);
+
     // State and error codes
-    json += "\"state\":" + std::to_string(vio->state) + ",";
-    json += "\"error_code\":" + std::to_string(vio->error_code);
-    
-    json += "}";
-    return json;
+    cJSON_AddNumberToObject(root, "state", vio->state);
+    cJSON_AddNumberToObject(root, "error_code", vio->error_code);
+
+    char* json_string = cJSON_PrintUnformatted(root);
+    std::string result = json_string ? json_string : "{}";
+
+    cJSON_Delete(root);
+    if (json_string) free(json_string);
+
+    return result;
 }
 
 bool parse_vio_to_json(char* data, int bytes, std::string& json_output) {
@@ -126,14 +131,71 @@ bool parse_vio_to_json(char* data, int bytes, std::string& json_output) {
     }
 }
 
+std::string imu_to_json(const void* imu_data_ptr) {
+    const imu_data_t* imu = static_cast<const imu_data_t*>(imu_data_ptr);
+
+    cJSON* root = cJSON_CreateObject();
+    if (!root) return "{}";
+
+    // Accelerometer data (m/s²)
+    cJSON* accl = cJSON_CreateObject();
+    cJSON_AddNumberToObject(accl, "x", imu->accl_ms2[0]);
+    cJSON_AddNumberToObject(accl, "y", imu->accl_ms2[1]);
+    cJSON_AddNumberToObject(accl, "z", imu->accl_ms2[2]);
+    cJSON_AddItemToObject(root, "accl_ms2", accl);
+
+    // Gyroscope data (rad/s)
+    cJSON* gyro = cJSON_CreateObject();
+    cJSON_AddNumberToObject(gyro, "x", imu->gyro_rad[0]);
+    cJSON_AddNumberToObject(gyro, "y", imu->gyro_rad[1]);
+    cJSON_AddNumberToObject(gyro, "z", imu->gyro_rad[2]);
+    cJSON_AddItemToObject(root, "gyro_rad", gyro);
+
+    // Temperature (°C)
+    cJSON_AddNumberToObject(root, "temp_c", imu->temp_c);
+
+    cJSON_AddNumberToObject(root, "timestamp_ns", imu->timestamp_ns);
+
+    char* json_string = cJSON_PrintUnformatted(root);
+    std::string result = json_string ? json_string : "{}";
+
+    cJSON_Delete(root);
+    if (json_string) free(json_string);
+
+    return result;
+}
+
+// https://gitlab.com/voxl-public/voxl-sdk/utilities/voxl-mpa-tools/-/blob/master/tools/voxl-inspect-imu.c
+bool parse_imu_to_json(char* data, int bytes, std::string& json_output) {
+    int n_packets;
+    imu_data_t* data_array = pipe_validate_imu_data_t(data, bytes, &n_packets);
+
+    if (data_array != NULL && n_packets > 0) {
+        // Convert latest IMU data to JSON
+        json_output = imu_to_json(&data_array[n_packets-1]);
+
+        if (n_packets > 1) {
+            std::cout << "Received " << n_packets << " IMU data packets, converting latest one" << std::endl;
+        }
+        return true;
+    } else {
+        json_output.clear();
+        return false;
+    }
+}
+
 bool parse_pipe_data_to_json(const std::string& pipe_name, char* data, int bytes, std::string& json_output) {
-    
-    if (pipe_name.find("vio") != std::string::npos || 
-        pipe_name.find("qvio") != std::string::npos ||
-        pipe_name.find("openvins") != std::string::npos) {
-        
+
+    if (pipe_name.find("vvhub_aligned_vio") != std::string::npos) {
         // Try VIO parsing first for vio-related pipes
         if (parse_vio_to_json(data, bytes, json_output)) {
+            return true;
+        }
+    }
+
+    if (pipe_name.find("imu_apps") != std::string::npos) {
+        // Parse IMU data
+        if (parse_imu_to_json(data, bytes, json_output)) {
             return true;
         }
     }
@@ -142,11 +204,26 @@ bool parse_pipe_data_to_json(const std::string& pipe_name, char* data, int bytes
     if (parse_mavlink_to_json(data, bytes, json_output)) {
         return true;
     }
-        
+
     // If both parsers fail, return raw data as fallback
-    json_output = "{\"data_type\":\"raw\",\"timestamp\":" + std::to_string(std::time(nullptr)) + 
-                  ",\"bytes\":" + std::to_string(bytes) + 
-                  ",\"data\":\"" + std::string(data, std::min(bytes, 100)) + "\"}";
+    cJSON* raw_json = cJSON_CreateObject();
+    if (raw_json) {
+        cJSON_AddStringToObject(raw_json, "data_type", "raw");
+        cJSON_AddNumberToObject(raw_json, "timestamp", std::time(nullptr));
+        cJSON_AddNumberToObject(raw_json, "bytes", bytes);
+
+        // Add truncated data string (max 100 bytes)
+        std::string data_str(data, std::min(bytes, 100));
+        cJSON_AddStringToObject(raw_json, "data", data_str.c_str());
+
+        char* json_string = cJSON_PrintUnformatted(raw_json);
+        json_output = json_string ? json_string : "{}";
+
+        cJSON_Delete(raw_json);
+        if (json_string) free(json_string);
+    } else {
+        json_output = "{}";
+    }
     return false;
 }
 

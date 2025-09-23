@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(voxl-mqtt-client)
+project(voxl-mavlink-mqtt-client)
 
 # Standard compiler flags from other VOXL services
 set(CMAKE_C_FLAGS "-std=gnu99 -O3 -Werror -Wall -Wextra -Wuninitialized \

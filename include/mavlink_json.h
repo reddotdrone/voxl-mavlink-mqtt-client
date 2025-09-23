@@ -41,6 +41,22 @@ std::string vio_to_json(const void* vio_data);
 bool parse_vio_to_json(char* data, int bytes, std::string& json_output);
 
 /**
+ * Convert IMU data to JSON string for MQTT publishing
+ * @param imu_data Pointer to IMU data structure
+ * @return JSON string representation of the IMU data
+ */
+std::string imu_to_json(const void* imu_data);
+
+/**
+ * Parse raw pipe data into IMU data and convert to JSON
+ * @param data Raw data buffer from pipe
+ * @param bytes Number of bytes in buffer
+ * @param json_output Output JSON string (empty if parsing fails)
+ * @return true if parsing successful, false otherwise
+ */
+bool parse_imu_to_json(char* data, int bytes, std::string& json_output);
+
+/**
  * Auto-detect data type and parse to JSON
  * Tries MAVLink first, then VIO, then falls back to raw data
  * @param pipe_name Name of the pipe (used for type detection hints)

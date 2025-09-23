@@ -1,11 +1,11 @@
 [Unit]
-Description=VOXL MQTT Client
+Description=VOXL MAVLink MQTT Client
 After=network.target
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/voxl-mqtt-client
+ExecStart=/usr/bin/voxl-mavlink-mqtt-client
 Restart=always
 RestartSec=5
 StandardOutput=journal

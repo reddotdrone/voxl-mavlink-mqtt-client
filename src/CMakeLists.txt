@@ -4,7 +4,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include/stubs)
 include_directories(/usr/include)
 
 # main executable
-add_executable(voxl-mqtt-client
+add_executable(voxl-mavlink-mqtt-client
 	main.cpp
 	mqtt_client.cpp
 	config_file.cpp
@@ -13,7 +13,7 @@ add_executable(voxl-mqtt-client
 )
 
 # link libraries
-target_link_libraries(voxl-mqtt-client
+target_link_libraries(voxl-mavlink-mqtt-client
 	pthread
 )
 
@@ -21,10 +21,10 @@ target_link_libraries(voxl-mqtt-client
 if(CMAKE_CROSSCOMPILING OR DEFINED CMAKE_TOOLCHAIN_FILE)
     # Cross-compilation: use ARM64 mosquitto and ensure 64-bit library paths
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L/usr/lib/aarch64-linux-gnu -L/usr/lib64")
-    target_link_libraries(voxl-mqtt-client mosquitto)
+    target_link_libraries(voxl-mavlink-mqtt-client mosquitto)
 
     # Link VOXL libraries for cross-compilation
-    target_link_libraries(voxl-mqtt-client
+    target_link_libraries(voxl-mavlink-mqtt-client
         modal_pipe
         modal_json
         voxl_cutils
@@ -32,9 +32,9 @@ if(CMAKE_CROSSCOMPILING OR DEFINED CMAKE_TOOLCHAIN_FILE)
     )
 else()
     # Native build: use x86_64 mosquitto and skip VOXL libraries
-    target_link_libraries(voxl-mqtt-client mosquitto)
+    target_link_libraries(voxl-mavlink-mqtt-client mosquitto)
     message(STATUS "Native build: Skipping VOXL libraries")
 endif()
 
 # install executable
-install(TARGETS voxl-mqtt-client DESTINATION /usr/bin)
+install(TARGETS voxl-mavlink-mqtt-client DESTINATION /usr/bin)

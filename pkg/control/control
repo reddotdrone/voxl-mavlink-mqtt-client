@@ -1,9 +1,9 @@
-Package: voxl-mqtt-client
-Version: 1.0.0
+Package: voxl-mavlink-mqtt-client
+Version: 0.0.1
 Section: base
 Priority: optional
 Architecture: arm64
 Depends: 
 Conflicts: 
 Maintainer: akira@reddotdrone.com
-Description: MQTT client service for VOXL that bridges Modal Pipe system with MQTT brokers
+Description: MAVLink MQTT client service for VOXL that bridges Modal Pipe system with MQTT brokers

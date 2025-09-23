@@ -44,7 +44,7 @@
 static void set_default_config(mqtt_config_t* config) {
     config->broker_host = "localhost";
     config->broker_port = 1883;
-    config->client_id = "voxl-mqtt-client";
+    config->client_id = "voxl-mavlink-mqtt-client";
     config->username = "";
     config->password = "";
     config->use_tls = false;
@@ -182,13 +182,13 @@ int save_default_config(void) {
         return -1;
     }
     
-    file << "# VOXL MQTT Client Configuration\n";
-    file << "# This file configures the MQTT client for publishing to topics\n\n";
+    file << "# VOXL MAVLink MQTT Client Configuration\n";
+    file << "# This file configures the MAVLink MQTT client for publishing to topics\n\n";
     
     file << "[broker]\n";
     file << "broker_host = \"localhost\"\n";
     file << "broker_port = 1883\n";
-    file << "client_id = \"voxl-mqtt-client\"\n";
+    file << "client_id = \"voxl-mavlink-mqtt-client\"\n";
     file << "username = \"\"\n";
     file << "password = \"\"\n";
     file << "keepalive = 60\n";
@@ -214,7 +214,7 @@ int save_default_config(void) {
 }
 
 void print_config(const mqtt_config_t* config) {
-    std::cout << "MQTT Configuration:\n";
+    std::cout << "MAVLink MQTT Configuration:\n";
     std::cout << "  Broker: " << config->broker_host << ":" << config->broker_port << "\n";
     std::cout << "  Client ID: " << config->client_id << "\n";
     std::cout << "  Username: " << config->username << "\n";
