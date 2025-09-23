@@ -16,7 +16,7 @@ TOOLCHAIN_QRB5165_2="/opt/cross_toolchain/qrb5165_ubun2_20.04_aarch64.toolchain.
 EXTRA_OPTS=""
 
 ## this list is just for tab-completion
-AVAILABLE_PLATFORMS="qrb5165 qrb5165-2 native"
+AVAILABLE_PLATFORMS="qrb5165 qrb5165-2"
 
 
 print_usage(){
@@ -30,10 +30,6 @@ print_usage(){
 	echo ""
 	echo "  ./build.sh qrb5165-2"
 	echo "        Build 64-bit binaries for qrb5165 2.X system images"
-	echo ""
-	echo "  ./build.sh native"
-	echo "        Build with the native gcc/g++ compilers for testing code"
-	echo "        locally on a desktop computer."
 	echo ""
 	echo ""
 }
@@ -87,15 +83,6 @@ case "$1" in
 		make -j$(nproc)
 		cd ../
 		;;
-
-	native)
-		mkdir -p build
-		cd build
-		cmake ${EXTRA_OPTS} ../
-		make -j$(nproc)
-		cd ../
-		;;
-
 	*)
 		print_usage
 		exit 1

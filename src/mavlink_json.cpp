@@ -13,7 +13,6 @@
 #include <cstring>
 #include <cJSON.h>
 
-#if !defined(__x86_64__)
 #include <modal_pipe_interfaces.h>
 #include <modal_json.h>
 
@@ -226,5 +225,3 @@ bool parse_pipe_data_to_json(const std::string& pipe_name, char* data, int bytes
     }
     return false;
 }
-
-#endif // !defined(__x86_64__)

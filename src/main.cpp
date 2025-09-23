@@ -43,16 +43,9 @@
 #include <ctime>  // For std::time
 
 // ModalAI includes
-#if defined(__x86_64__)
-// Modal pipe client stubs
-#include "modal_start_stop_stub.h"
-#include "modal_pipe_stub.h"
-#include "modal_pipe_client_stub.h"
-#else
 #include <c_library_v2/common/mavlink.h>
 #include <modal_start_stop.h>
 #include <modal_pipe_client.h>
-#endif
 
 // MQTT client components
 #include "mqtt_client.h"
@@ -102,11 +95,7 @@ static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unu
     if (topic_it != g_channel_to_topic.end()) {
         std::string payload;
 
-#if defined(__x86_64__)
-        // For native builds, just use raw data
-        payload = std::string(data, bytes);
-#else
-        // For VOXL builds, auto-detect and parse data (MAVLink, VIO, etc.)
+        // Auto-detect and parse data (MAVLink, VIO, etc.)
         std::string pipe_name;
         // Find the pipe name for this channel
         for (const auto& pub_topic : g_config.publish_topics) {
@@ -122,7 +111,6 @@ static void pipe_data_callback(int ch, char* data, int bytes, __attribute__((unu
             payload = std::string(data, bytes);
             std::cout << "Data parsing failed for pipe '" << pipe_name << "', using raw data" << std::endl;
         }
-#endif
 
         // Find QoS level for this topic
         int qos = 0;
@@ -164,33 +152,31 @@ static void pipe_disconnect_callback(int ch, __attribute__((unused)) void* conte
  */
 static int setup_pipes() {
     std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
-    
-#if !defined(__x86_64__)
+
     // Set up client pipes for reading VOXL data and publishing to MQTT
     int ch = 0;
     for (const auto& pub_topic : g_config.publish_topics) {
         int flags = CLIENT_FLAG_EN_SIMPLE_HELPER;
-        
+
         // Set up callbacks for this channel
         pipe_client_set_simple_helper_cb(ch, pipe_data_callback, NULL);
         pipe_client_set_connect_cb(ch, pipe_connect_callback, NULL);
         pipe_client_set_disconnect_cb(ch, pipe_disconnect_callback, NULL);
-        
+
         // Open the pipe client connection
         int ret = pipe_client_open(ch, pub_topic.pipe_name.c_str(), CLIENT_NAME, flags, PIPE_READ_BUF_SIZE);
-        
+
         if (ret != 0) {
             std::cerr << "Failed to open pipe client for " << pub_topic.pipe_name << ": " << ret << std::endl;
             continue;
         }
-        
+
         g_publish_pipes[pub_topic.pipe_name] = ch;
         g_channel_to_topic[ch] = pub_topic.topic;
         std::cout << "Opened publish pipe: " << pub_topic.pipe_name << " on channel " << ch << std::endl;
         ch++;
     }
-#endif
-    
+
     return 0;
 }
 
@@ -205,9 +191,7 @@ static void cleanup_pipes() {
 
     std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
 
-#if !defined(__x86_64__)
     pipe_client_close_all();
-#endif
     g_publish_pipes.clear();
     g_channel_to_topic.clear();
 

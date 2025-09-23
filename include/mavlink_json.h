@@ -11,7 +11,6 @@
 
 #include <string>
 
-#if !defined(__x86_64__)
 #include <c_library_v2/common/mavlink.h>
 #include <mavlink_to_json.h>
 
@@ -66,5 +65,3 @@ bool parse_imu_to_json(char* data, int bytes, std::string& json_output);
  * @return true if any parsing was successful, false otherwise
  */
 bool parse_pipe_data_to_json(const std::string& pipe_name, char* data, int bytes, std::string& json_output);
-
-#endif // !defined(__x86_64__)
