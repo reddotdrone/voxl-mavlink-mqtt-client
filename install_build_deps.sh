@@ -15,8 +15,7 @@ libmodal-pipe
 libmodal-journal
 libvoxl-cutils
 libmosquitto-dev
-voxl-mavlink
-mavlink-to-json"
+voxl-mavlink"
 
 
 

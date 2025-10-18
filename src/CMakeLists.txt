@@ -1,6 +1,5 @@
 # Skip pkg-config for cross-compilation, manually set paths
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include/stubs)
 include_directories(/usr/include)
 
 # main executable
