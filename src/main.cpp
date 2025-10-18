@@ -46,6 +46,7 @@
 #include <c_library_v2/common/mavlink.h>
 #include <modal_start_stop.h>
 #include <modal_pipe_client.h>
+#include <modal_pipe_server.h>
 
 // MQTT client components
 #include "mqtt_client.h"
@@ -59,22 +60,38 @@
 volatile int main_running = 0;                       // Application running flag
 static MQTTClient* g_mqtt_client = nullptr;          // MQTT client instance
 static mqtt_config_t g_config;                       // Configuration loaded from file
-static std::map<std::string, int> g_publish_pipes;   // Map pipe names to channels for publishing
+static std::map<std::string, int> g_publish_pipes;   // Map pipe names to channels for publishing (reading from pipes)
 static std::map<int, std::string> g_channel_to_topic; // Map pipe channel to MQTT topic
+static std::map<std::string, int> g_subscribe_pipes; // Map pipe names to channels for subscribing (writing to pipes)
+static std::map<std::string, std::string> g_topic_to_pipe; // Map MQTT topic to pipe name for subscriptions
 static std::mutex g_publish_mutex;                   // Thread safety for publish operations
+static std::mutex g_subscribe_mutex;                 // Thread safety for subscribe operations
 static PublishTimer* g_publish_timer = nullptr;      // Timer-based publishing system
 bool g_debug_mode = false;                           // Debug logging flag
 static int g_interval = 1;                           // Publish interval in seconds
 
 #define PIPE_READ_BUF_SIZE 4096
-#define CLIENT_NAME "voxl-mavlink-mqtt-client"
+#define PIPE_WRITE_BUF_SIZE 4096
+#define PIPE_CLIENT_NAME "voxl-mavlink-mqtt-client"
+#define PIPE_SERVER_NAME "voxl-mavlink-mqtt-client"
 
 /**
  * MQTT connection callback - called when connection status changes
+ * Subscribe to configured topics when connected
  */
 static void on_mqtt_connect(int result) {
     if (result == 0) {
         std::cout << "Connected to MQTT broker" << std::endl;
+
+        // Subscribe to all configured topics
+        for (const auto& sub_topic : g_config.subscribe_topics) {
+            if (g_mqtt_client->subscribe(sub_topic.topic, sub_topic.qos)) {
+                std::cout << "Subscribed to MQTT topic: " << sub_topic.topic
+                          << " (will publish to pipe: " << sub_topic.pipe_name << ")" << std::endl;
+            } else {
+                std::cerr << "Failed to subscribe to topic: " << sub_topic.topic << std::endl;
+            }
+        }
     } else {
         std::cerr << "Failed to connect to MQTT broker: " << result << std::endl;
     }
@@ -147,7 +164,7 @@ static void pipe_connect_callback(int ch, __attribute__((unused)) void* context)
 }
 
 /**
- * Pipe client disconnect callback - called when pipe client disconnects  
+ * Pipe client disconnect callback - called when pipe client disconnects
  */
 static void pipe_disconnect_callback(int ch, __attribute__((unused)) void* context) {
     if (g_debug_mode) {
@@ -156,37 +173,110 @@ static void pipe_disconnect_callback(int ch, __attribute__((unused)) void* conte
 }
 
 /**
+ * MQTT message callback - called when message arrives from subscribed topic
+ * Publishes received data to corresponding Modal Pipe server
+ */
+static void on_mqtt_message(const std::string& topic, const std::string& payload) {
+    std::lock_guard<std::mutex> sub_lock(g_subscribe_mutex);
+
+    // Find the pipe name for this MQTT topic
+    auto pipe_it = g_topic_to_pipe.find(topic);
+    if (pipe_it != g_topic_to_pipe.end()) {
+        const std::string& pipe_name = pipe_it->second;
+
+        // Find the pipe channel
+        auto ch_it = g_subscribe_pipes.find(pipe_name);
+        if (ch_it != g_subscribe_pipes.end()) {
+            int ch = ch_it->second;
+
+            // Publish the data to the pipe server
+            int ret = pipe_server_write(ch, (char*)payload.c_str(), payload.length());
+
+            if (ret < 0) {
+                std::cerr << "Failed to write to pipe '" << pipe_name << "': " << ret << std::endl;
+            } else if (g_debug_mode) {
+                std::cout << "Published " << payload.length() << " bytes from MQTT topic '"
+                          << topic << "' to pipe '" << pipe_name << "'" << std::endl;
+                std::cout << "Payload: " << payload << std::endl;
+            }
+        } else {
+            std::cerr << "Pipe channel not found for: " << pipe_name << std::endl;
+        }
+    } else {
+        if (g_debug_mode) {
+            std::cout << "No pipe mapping for MQTT topic: " << topic << std::endl;
+        }
+    }
+}
+
+/**
  * Initialize all Modal Pipe connections
- * Sets up client pipes for publishing to MQTT
+ * Sets up client pipes for reading from pipes and publishing to MQTT
+ * Sets up server pipes for receiving from MQTT and writing to pipes
  * @return 0 on success, -1 on failure
  */
 static int setup_pipes() {
-    std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
-
     // Set up client pipes for reading VOXL data and publishing to MQTT
-    int ch = 0;
-    for (const auto& pub_topic : g_config.publish_topics) {
-        int flags = CLIENT_FLAG_EN_SIMPLE_HELPER;
+    {
+        std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
+        int ch = 0;
+        for (const auto& pub_topic : g_config.publish_topics) {
+            int flags = CLIENT_FLAG_EN_SIMPLE_HELPER;
 
-        // Set up callbacks for this channel
-        pipe_client_set_simple_helper_cb(ch, pipe_data_callback, NULL);
-        pipe_client_set_connect_cb(ch, pipe_connect_callback, NULL);
-        pipe_client_set_disconnect_cb(ch, pipe_disconnect_callback, NULL);
+            // Set up callbacks for this channel
+            pipe_client_set_simple_helper_cb(ch, pipe_data_callback, NULL);
+            pipe_client_set_connect_cb(ch, pipe_connect_callback, NULL);
+            pipe_client_set_disconnect_cb(ch, pipe_disconnect_callback, NULL);
 
-        // Open the pipe client connection
-        int ret = pipe_client_open(ch, pub_topic.pipe_name.c_str(), CLIENT_NAME, flags, PIPE_READ_BUF_SIZE);
+            // Open the pipe client connection
+            int ret = pipe_client_open(ch, pub_topic.pipe_name.c_str(), PIPE_CLIENT_NAME, flags, PIPE_READ_BUF_SIZE);
 
-        if (ret != 0) {
-            std::cerr << "Failed to open pipe client for " << pub_topic.pipe_name << ": " << ret << std::endl;
-            continue;
+            if (ret != 0) {
+                std::cerr << "Failed to open pipe client for " << pub_topic.pipe_name << ": " << ret << std::endl;
+                continue;
+            }
+
+            g_publish_pipes[pub_topic.pipe_name] = ch;
+            g_channel_to_topic[ch] = pub_topic.topic;
+            if (g_debug_mode) {
+                std::cout << "Opened publish pipe client: " << pub_topic.pipe_name << " on channel " << ch << std::endl;
+            }
+            ch++;
         }
+    }
 
-        g_publish_pipes[pub_topic.pipe_name] = ch;
-        g_channel_to_topic[ch] = pub_topic.topic;
-        if (g_debug_mode) {
-            std::cout << "Opened publish pipe: " << pub_topic.pipe_name << " on channel " << ch << std::endl;
+    // Set up server pipes for receiving MQTT data and publishing to VOXL pipes
+    {
+        std::lock_guard<std::mutex> sub_lock(g_subscribe_mutex);
+        int ch = 0;
+        for (const auto& sub_topic : g_config.subscribe_topics) {
+            // Create pipe_info_t structure
+            pipe_info_t info;
+            memset(&info, 0, sizeof(info));
+
+            // Build location path: /run/mpa/<pipe_name>/
+            std::string location = std::string(MODAL_PIPE_DEFAULT_BASE_DIR) + sub_topic.pipe_name + "/";
+
+            strncpy(info.name, sub_topic.pipe_name.c_str(), sizeof(info.name) - 1);
+            strncpy(info.location, location.c_str(), sizeof(info.location) - 1);
+            strncpy(info.type, "json", sizeof(info.type) - 1);
+            strncpy(info.server_name, PIPE_SERVER_NAME, sizeof(info.server_name) - 1);
+            info.size_bytes = PIPE_WRITE_BUF_SIZE;
+
+            // Open the pipe server connection
+            int flags = 0; // No special flags needed
+            int ret = pipe_server_create(ch, info, flags);
+
+            if (ret != 0) {
+                std::cerr << "Failed to open pipe server for " << sub_topic.pipe_name << ": " << ret << std::endl;
+                continue;
+            }
+
+            g_subscribe_pipes[sub_topic.pipe_name] = ch;
+            g_topic_to_pipe[sub_topic.topic] = sub_topic.pipe_name;
+            std::cout << "Opened subscribe pipe server: " << sub_topic.pipe_name << " on channel " << ch << std::endl;
+            ch++;
         }
-        ch++;
     }
 
     return 0;
@@ -201,15 +291,25 @@ static void cleanup_pipes() {
         g_publish_timer->stop();
     }
 
-    std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
+    // Close client pipes
+    {
+        std::lock_guard<std::mutex> pub_lock(g_publish_mutex);
+        pipe_client_close_all();
+        g_publish_pipes.clear();
+        g_channel_to_topic.clear();
 
-    pipe_client_close_all();
-    g_publish_pipes.clear();
-    g_channel_to_topic.clear();
+        // Clear buffered data
+        if (g_publish_timer) {
+            g_publish_timer->clear_buffered_data();
+        }
+    }
 
-    // Clear buffered data
-    if (g_publish_timer) {
-        g_publish_timer->clear_buffered_data();
+    // Close server pipes
+    {
+        std::lock_guard<std::mutex> sub_lock(g_subscribe_mutex);
+        pipe_server_close_all();
+        g_subscribe_pipes.clear();
+        g_topic_to_pipe.clear();
     }
 }
 
@@ -330,6 +430,7 @@ int main(int argc, char* argv[]) {
     // Register MQTT event callbacks
     g_mqtt_client->set_on_connect_callback(on_mqtt_connect);
     g_mqtt_client->set_on_disconnect_callback(on_mqtt_disconnect);
+    g_mqtt_client->set_on_message_callback(on_mqtt_message);
     
     // Initialize Modal Pipe connections
     if (setup_pipes() != 0) {

@@ -53,21 +53,19 @@ static void set_default_config(mqtt_config_t* config) {
     config->key_path = "";
     config->keepalive = 60;
     config->reconnect_delay = 5;
-    
     config->publish_topics.clear();
-    
+    config->subscribe_topics.clear();
+
     mqtt_topic_config_t pub_topic;
     // pub_topic.topic = "voxl/imu";
     // pub_topic.pipe_name = "imu";
     // pub_topic.qos = 0;
     // config->publish_topics.push_back(pub_topic);
-    
-    // pub_topic.topic = "voxl/qvio";
-    // pub_topic.pipe_name = "vvhub_aligned_vio";
-    // pub_topic.qos = 0;
-    // config->publish_topics.push_back(pub_topic);
 
-    // #define MODAL_PIPE_DEFAULT_BASE_DIR "/run/mpa/"
+    pub_topic.topic = "voxl/vio";
+    pub_topic.pipe_name = "vvhub_aligned_vio";
+    pub_topic.qos = 0;
+    config->publish_topics.push_back(pub_topic);
 
     pub_topic.topic = "voxl/battery";
     pub_topic.pipe_name = "/run/mpa/mavlink_sys_status/";
@@ -79,6 +77,12 @@ static void set_default_config(mqtt_config_t* config) {
     pub_topic.qos = 0;
     config->publish_topics.push_back(pub_topic);
 
+    // Default subscribe topic for offboard MQTT commands
+    mqtt_topic_config_t sub_topic;
+    sub_topic.topic = "voxl/offboard_cmd";
+    sub_topic.pipe_name = "offboard_mqtt_cmd";
+    sub_topic.qos = 0;
+    config->subscribe_topics.push_back(sub_topic);
 }
 
 static std::string trim(const std::string& str) {
@@ -106,32 +110,42 @@ int load_config(mqtt_config_t* config) {
     std::string line;
     mqtt_topic_config_t current_topic;
     bool in_publish_section = false;
-    
+    bool in_subscribe_section = false;
+
     while (std::getline(file, line)) {
         line = trim(line);
         if (line.empty() || line[0] == '#') continue;
-        
+
         if (line == "[publish_topics]") {
             in_publish_section = true;
+            in_subscribe_section = false;
             config->publish_topics.clear();
+            continue;
+        }
+
+        if (line == "[subscribe_topics]") {
+            in_subscribe_section = true;
+            in_publish_section = false;
+            config->subscribe_topics.clear();
             continue;
         }
 
         if (line[0] == '[' && line.back() == ']') {
             in_publish_section = false;
+            in_subscribe_section = false;
             continue;
         }
-        
+
         size_t eq_pos = line.find('=');
         if (eq_pos == std::string::npos) continue;
-        
+
         std::string key = trim(line.substr(0, eq_pos));
         std::string value = trim(line.substr(eq_pos + 1));
-        
+
         if (value.front() == '"' && value.back() == '"') {
             value = value.substr(1, value.length() - 2);
         }
-        
+
         if (in_publish_section) {
             if (key == "topic") {
                 current_topic.topic = value;
@@ -140,6 +154,15 @@ int load_config(mqtt_config_t* config) {
             } else if (key == "qos") {
                 current_topic.qos = std::stoi(value);
                 config->publish_topics.push_back(current_topic);
+            }
+        } else if (in_subscribe_section) {
+            if (key == "topic") {
+                current_topic.topic = value;
+            } else if (key == "pipe_name") {
+                current_topic.pipe_name = value;
+            } else if (key == "qos") {
+                current_topic.qos = std::stoi(value);
+                config->subscribe_topics.push_back(current_topic);
             }
         } else {
             if (key == "broker_host") {
@@ -207,8 +230,13 @@ int save_default_config(void) {
     file << "topic = \"voxl/qvio\"\n";
     file << "pipe_name = \"qvio\"\n";
     file << "qos = 0\n\n";
-    
-    
+
+    file << "[subscribe_topics]\n";
+    file << "# MQTT topics to subscribe to and forward to Modal Pipes\n";
+    file << "topic = \"voxl/offboard_cmd\"\n";
+    file << "pipe_name = \"offboard_mqtt_cmd\"\n";
+    file << "qos = 0\n\n";
+
     file.close();
     return 0;
 }
@@ -221,11 +249,16 @@ void print_config(const mqtt_config_t* config) {
     std::cout << "  TLS: " << (config->use_tls ? "enabled" : "disabled") << "\n";
     std::cout << "  Keepalive: " << config->keepalive << "s\n";
     std::cout << "  Reconnect delay: " << config->reconnect_delay << "s\n";
-    
-    std::cout << "\nPublish Topics:\n";
+
+    std::cout << "\nPublish Topics (Pipe -> MQTT):\n";
     for (const auto& topic : config->publish_topics) {
         std::cout << "  " << topic.topic << " <- " << topic.pipe_name << " (QoS " << topic.qos << ")\n";
     }
-    
+
+    std::cout << "\nSubscribe Topics (MQTT -> Pipe):\n";
+    for (const auto& topic : config->subscribe_topics) {
+        std::cout << "  " << topic.topic << " -> " << topic.pipe_name << " (QoS " << topic.qos << ")\n";
+    }
+
     std::cout << std::endl;
 }
