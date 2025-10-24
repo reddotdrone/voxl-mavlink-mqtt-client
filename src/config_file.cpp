@@ -79,8 +79,13 @@ static void set_default_config(mqtt_config_t* config) {
 
     // Default subscribe topic for offboard MQTT commands
     mqtt_topic_config_t sub_topic;
-    sub_topic.topic = "voxl/offboard_cmd";
-    sub_topic.pipe_name = "offboard_mqtt_cmd";
+    sub_topic.topic = "voxl/offboard_vio_cmd";
+    sub_topic.pipe_name = "offboard_mqtt_vio_cmd";
+    sub_topic.qos = 0;
+    config->subscribe_topics.push_back(sub_topic);
+
+    sub_topic.topic = "voxl/offboard_action_cmd";
+    sub_topic.pipe_name = "offboard_mqtt_action_cmd";
     sub_topic.qos = 0;
     config->subscribe_topics.push_back(sub_topic);
 }

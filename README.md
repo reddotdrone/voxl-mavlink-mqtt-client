@@ -53,6 +53,14 @@ View current configuration:
 voxl-mavlink-mqtt-client --config
 ```
 
+## Voxl Wifi
+
+Use station mode to connect VOXL to a MQTT broker:
+
+```bash
+voxl-wifi
+```
+
 ## Configuration File
 
 The configuration file is located at `/etc/modalai/voxl-mavlink-mqtt-client.conf` and supports:
