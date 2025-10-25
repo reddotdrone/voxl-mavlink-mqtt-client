@@ -18,11 +18,17 @@ A MAVLink MQTT client service for VOXL that enables publishing MAVLink messages 
 ```
 
 ### Add ARM64 architecture if not already added
+
+```bash
   sudo dpkg --add-architecture arm64
   sudo apt update
+```
 
 ### Install ARM64 mosquitto library
+
+```bash
   sudo apt install libmosquitto-dev:arm64 libmosquitto1:arm64
+```
 
 ## Building
 
